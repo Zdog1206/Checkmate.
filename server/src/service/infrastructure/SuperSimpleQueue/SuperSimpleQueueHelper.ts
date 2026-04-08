@@ -158,28 +158,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						// Just went down: Start the clock!
 						await this.monitorsRepository.updateById(monitorId, teamId, {
 							downtimeStartAt: new Date().toISOString(),
-							escalationSent: false
+							escalationSent: false,
 						});
 					} else if (statusChangeResult.monitor.status === "up") {
 						// Recovered: Clear the clock!
 						await this.monitorsRepository.updateById(monitorId, teamId, {
 							downtimeStartAt: null,
-							escalationSent: false
+							escalationSent: false,
 						});
 					}
-				} 
+				}
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
 				if (decision.shouldSendEscalation) {
-				// 1. Mark as sent so we don't spam the user every 30 seconds
-				await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true });
-				
-				// 2. Fire the special escalation alert
-				this.notificationsService.handleEscalation(statusChangeResult.monitor).catch(err => {
-					this.logger.error({ message: "Escalation failed", details: err.message });
-				});
-			}
+					// 1. Mark as sent so we don't spam the user every 30 seconds
+					await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true });
+
+					// 2. Fire the special escalation alert
+					this.notificationsService.handleEscalation(statusChangeResult.monitor).catch((err) => {
+						this.logger.error({ message: "Escalation failed", details: err.message });
+					});
+				}
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -443,51 +443,51 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
-    const { monitor, statusChanged, prevStatus } = statusChangeResult;
+		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
-    // Initialize result
-    const decision: MonitorActionDecision = {
-        shouldCreateIncident: false,
-        shouldResolveIncident: false,
-        shouldSendNotification: false,
-        shouldSendEscalation: false, // <--- Add this line
-        incidentReason: null,
-        notificationReason: null,
-    };
+		// Initialize result
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: false,
+			shouldSendEscalation: false, // <--- Add this line
+			incidentReason: null,
+			notificationReason: null,
+		};
 
-    // --- ESCALATION CHECK ---
-    // If it's currently down, hasn't been escalated yet, and we have a start time...
-    if (monitor.status === 'down' && !monitor.escalationSent && monitor.downtimeStartAt) {
-        const downtimeMs = Date.now() - new Date(monitor.downtimeStartAt).getTime();
-        const thresholdMs = (monitor.escalationAfterMinutes ?? 0) * 60 * 1000;
+		// --- ESCALATION CHECK ---
+		// If it's currently down, hasn't been escalated yet, and we have a start time...
+		if (monitor.status === "down" && !monitor.escalationSent && monitor.downtimeStartAt) {
+			const downtimeMs = Date.now() - new Date(monitor.downtimeStartAt).getTime();
+			const thresholdMs = (monitor.escalationAfterMinutes ?? 0) * 60 * 1000;
 
-        // If the downtime is longer than the threshold, set the flag to true!
-        if (thresholdMs > 0 && downtimeMs >= thresholdMs) {
-            decision.shouldSendEscalation = true;
-        }
-    }
+			// If the downtime is longer than the threshold, set the flag to true!
+			if (thresholdMs > 0 && downtimeMs >= thresholdMs) {
+				decision.shouldSendEscalation = true;
+			}
+		}
 
-    if (!statusChanged) {
-        return decision;
-    }
+		if (!statusChanged) {
+			return decision;
+		}
 
-    // ... (Keep the rest of your existing if/else logic for 'down', 'breached', and 'up' below)
-    if (monitor.status === "down") {
-        decision.shouldCreateIncident = true;
-        decision.shouldSendNotification = true;
-        decision.incidentReason = "status_down";
-        decision.notificationReason = "status_change";
-    } else if (monitor.status === "breached") {
-        decision.shouldCreateIncident = true;
-        decision.shouldSendNotification = true;
-        decision.incidentReason = "threshold_breach";
-        decision.notificationReason = "threshold_breach";
-    } else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-        decision.shouldResolveIncident = true;
-        decision.shouldSendNotification = true;
-        decision.notificationReason = "status_change";
-    }
+		// ... (Keep the rest of your existing if/else logic for 'down', 'breached', and 'up' below)
+		if (monitor.status === "down") {
+			decision.shouldCreateIncident = true;
+			decision.shouldSendNotification = true;
+			decision.incidentReason = "status_down";
+			decision.notificationReason = "status_change";
+		} else if (monitor.status === "breached") {
+			decision.shouldCreateIncident = true;
+			decision.shouldSendNotification = true;
+			decision.incidentReason = "threshold_breach";
+			decision.notificationReason = "threshold_breach";
+		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+			decision.shouldResolveIncident = true;
+			decision.shouldSendNotification = true;
+			decision.notificationReason = "status_change";
+		}
 
-    return decision;
-}
+		return decision;
+	}
 }

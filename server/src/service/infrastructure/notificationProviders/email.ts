@@ -80,7 +80,7 @@ export class EmailProvider implements INotificationProvider {
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
 			case "monitor_escalation":
-                return `🚨 ESCALATION: Monitor ${message.monitor.name} is still down!`;
+				return `🚨 ESCALATION: Monitor ${message.monitor.name} is still down!`;
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":

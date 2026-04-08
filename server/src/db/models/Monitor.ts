@@ -356,23 +356,23 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			default: [],
 		},
 		// Add these inside your Monitor schema definition
-escalationAfterMinutes: {
-    type: Number,
-    default: 0,
-},
-escalationNotifications: [
-    {
-        type: Schema.Types.ObjectId,
-        ref: "Notification",
-    },
-],
-downtimeStartAt: {
-    type: Date,
-},
-escalationSent: {
-    type: Boolean,
-    default: false,
-},
+		escalationAfterMinutes: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		downtimeStartAt: {
+			type: Date,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	{
 		timestamps: true,

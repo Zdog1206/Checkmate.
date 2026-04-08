@@ -394,10 +394,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
-			escalationNotifications: (doc.escalationNotifications ?? []).map(id => toStringId(id)),
+			escalationNotifications: (doc.escalationNotifications ?? []).map((id) => toStringId(id)),
 			downtimeStartAt: doc.downtimeStartAt ? doc.downtimeStartAt.toISOString() : undefined,
 			escalationSent: doc.escalationSent ?? false,
-
 		};
 	};
 
@@ -458,9 +457,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
-            escalationNotifications: (doc.escalationNotifications ?? []).map((id: any) => toStringId(id)),
-            downtimeStartAt: doc.downtimeStartAt ? new Date(doc.downtimeStartAt).toISOString() : undefined,
-            escalationSent: doc.escalationSent ?? false,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((id: any) => toStringId(id)),
+			downtimeStartAt: doc.downtimeStartAt ? new Date(doc.downtimeStartAt).toISOString() : undefined,
+			escalationSent: doc.escalationSent ?? false,
 		};
 	};
 
