@@ -37,6 +37,7 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -152,10 +153,33 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.buffer.addToBuffer(check);
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
-
+				if (statusChangeResult.statusChanged) {
+					if (statusChangeResult.monitor.status === "down") {
+						// Just went down: Start the clock!
+						await this.monitorsRepository.updateById(monitorId, teamId, {
+							downtimeStartAt: new Date().toISOString(),
+							escalationSent: false
+						});
+					} else if (statusChangeResult.monitor.status === "up") {
+						// Recovered: Clear the clock!
+						await this.monitorsRepository.updateById(monitorId, teamId, {
+							downtimeStartAt: null,
+							escalationSent: false
+						});
+					}
+				} 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				if (decision.shouldSendEscalation) {
+				// 1. Mark as sent so we don't spam the user every 30 seconds
+				await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true });
+				
+				// 2. Fire the special escalation alert
+				this.notificationsService.handleEscalation(statusChangeResult.monitor).catch(err => {
+					this.logger.error({ message: "Escalation failed", details: err.message });
+				});
+			}
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -419,40 +443,51 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
-		const { monitor, statusChanged, prevStatus } = statusChangeResult;
+    const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
-		// Initialize result
-		const decision: MonitorActionDecision = {
-			shouldCreateIncident: false,
-			shouldResolveIncident: false,
-			shouldSendNotification: false,
-			incidentReason: null,
-			notificationReason: null,
-		};
+    // Initialize result
+    const decision: MonitorActionDecision = {
+        shouldCreateIncident: false,
+        shouldResolveIncident: false,
+        shouldSendNotification: false,
+        shouldSendEscalation: false, // <--- Add this line
+        incidentReason: null,
+        notificationReason: null,
+    };
 
-		if (!statusChanged) {
-			return decision;
-		}
+    // --- ESCALATION CHECK ---
+    // If it's currently down, hasn't been escalated yet, and we have a start time...
+    if (monitor.status === 'down' && !monitor.escalationSent && monitor.downtimeStartAt) {
+        const downtimeMs = Date.now() - new Date(monitor.downtimeStartAt).getTime();
+        const thresholdMs = (monitor.escalationAfterMinutes ?? 0) * 60 * 1000;
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
-		}
+        // If the downtime is longer than the threshold, set the flag to true!
+        if (thresholdMs > 0 && downtimeMs >= thresholdMs) {
+            decision.shouldSendEscalation = true;
+        }
+    }
 
-		return decision;
-	}
+    if (!statusChanged) {
+        return decision;
+    }
+
+    // ... (Keep the rest of your existing if/else logic for 'down', 'breached', and 'up' below)
+    if (monitor.status === "down") {
+        decision.shouldCreateIncident = true;
+        decision.shouldSendNotification = true;
+        decision.incidentReason = "status_down";
+        decision.notificationReason = "status_change";
+    } else if (monitor.status === "breached") {
+        decision.shouldCreateIncident = true;
+        decision.shouldSendNotification = true;
+        decision.incidentReason = "threshold_breach";
+        decision.notificationReason = "threshold_breach";
+    } else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+        decision.shouldResolveIncident = true;
+        decision.shouldSendNotification = true;
+        decision.notificationReason = "status_change";
+    }
+
+    return decision;
+}
 }
